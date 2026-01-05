@@ -1,7 +1,7 @@
-"""
-RoliaScan Scraper
-Scrapes all manga and chapters from roliascan.com
-"""
+#"""
+#RoliaScan Scraper
+#Scrapes all manga and chapters from roliascan.com
+#"""
 import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
