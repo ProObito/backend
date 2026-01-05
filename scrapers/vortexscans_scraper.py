@@ -1,7 +1,4 @@
-"""
-VortexScans Scraper
-Scrapes all manga from vortexscans.org
-"""
+#"""VortexScans ScraperScrapes all manga from vortexscans.org"""
 import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
