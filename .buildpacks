@@ -1,2 +1,1 @@
-heroku buildpacks:set heroku/nodejs
-git push heroku main
+heroku/nodejs
