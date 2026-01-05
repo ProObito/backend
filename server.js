@@ -20,7 +20,7 @@ const SUPABASE_URL =
 
 const SUPABASE_KEY =
   process.env.SUPABASE_KEY ||
-  "YOUR_SUPABASE_KEY";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxsaXJrZ3pqdGFxbHRreHNnYXpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcxNDA4ODEsImV4cCI6MjA4MjcxNjg4MX0.z1e8g4GgGy1jQaykQ5AFHR2_kSD11GnsUYyV8t0g3TI";
 
 app.use(cors());
 app.use(express.json());
