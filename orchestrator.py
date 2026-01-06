@@ -1,5 +1,6 @@
-#""" Main Orchestrator - Scrapes all sites and uploads ho"""
+"""Main Orchestrator - Scrapes all sites and uploads to cloud"""
 import asyncio
+from typing import List
 from scrapers import SCRAPERS
 from utils import CatboxUploader, DriveUploader, MongoHandler
 import os
