@@ -191,19 +191,10 @@ app.post("/api/admin/scrape-site", async (req, res) => {
     
     console.log(`🚀 Starting ${site} scraping...`);
     
-    // Run Python scraper for specific site
-    const pythonCode = `
-from orchestrator import MangaOrchestrator
-import asyncio
-
-async def main():
-    orchestrator = MangaOrchestrator()
-    await orchestrator.scrape_site('${site}', upload_images=False)
-
-asyncio.run(main())
-`;
+    // ✅ FIXED: Proper single-line Python command
+    const pythonCmd = `python3 -c "import asyncio; from orchestrator import MangaOrchestrator; asyncio.run(MangaOrchestrator().scrape_site('${site}', upload_images=False))"`;
     
-    exec(`python3 -c "${pythonCode.replace(/\n/g, ' ')}"`, {
+    exec(pythonCmd, {
       env: {
         ...process.env,
         MONGODB_URI_1: MONGODB_URIS[0],
@@ -213,6 +204,7 @@ asyncio.run(main())
     }, (error, stdout, stderr) => {
       if (error) {
         console.error(`❌ ${site} scraper error: ${error.message}`);
+        console.error(`stderr: ${stderr}`);
         return;
       }
       console.log(`✅ ${site} scraping completed!`);
