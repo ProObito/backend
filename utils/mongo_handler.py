@@ -1,6 +1,6 @@
-#"""MongoDB Handler - Saves to all 3 databases"""
+"""MongoDB Handler - Saves to all 3 databases"""
 from motor.motor_asyncio import AsyncIOMotorClient
-from typing import List, Dict
+from typing import List, Dict, Optional
 import asyncio
 from datetime import datetime
 
