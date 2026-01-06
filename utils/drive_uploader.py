@@ -1,4 +1,4 @@
-#"""Google Drive Uploader with Multi-Account Support"""
+"""Google Drive Uploader with Multi-Account Support"""
 import asyncio
 import aiohttp
 import json
@@ -13,23 +13,39 @@ class DriveUploader:
         credentials_json: JSON string of service account
         drive_accounts: List of 5 service account JSONs for rotation
         """
-        self.credentials = json.loads(credentials_json)
-        self.drive_accounts = drive_accounts or [credentials_json]
+        try:
+            self.credentials = json.loads(credentials_json) if credentials_json and credentials_json != '{}' else None
+        except (json.JSONDecodeError, ValueError):
+            print("⚠️  Invalid Drive credentials - Drive upload disabled")
+            self.credentials = None
+        
+        self.drive_accounts = drive_accounts or ([credentials_json] if self.credentials else [])
         self.current_account_index = 0
+        self.enabled = self.credentials is not None
     
     def _get_drive_service(self):
         """Get Google Drive service with current account"""
+        if not self.enabled:
+            return None
+        
         creds_json = json.loads(self.drive_accounts[self.current_account_index])
         credentials = service_account.Credentials.from_service_account_info(creds_json)
         return build('drive', 'v3', credentials=credentials)
     
     def _rotate_account(self):
         """Rotate to next Drive account"""
+        if not self.enabled:
+            return
+        
         self.current_account_index = (self.current_account_index + 1) % len(self.drive_accounts)
         print(f"🔄 Rotated to Drive account {self.current_account_index + 1}")
     
     async def upload_from_url(self, image_url: str, filename: str, folder_id: Optional[str] = None) -> Optional[str]:
         """Upload image from URL to Google Drive"""
+        if not self.enabled:
+            print("⚠️  Drive upload skipped - credentials not configured")
+            return None
+        
         try:
             # Download image
             async with aiohttp.ClientSession() as session:
@@ -40,6 +56,9 @@ class DriveUploader:
             
             # Upload to Drive
             service = self._get_drive_service()
+            if not service:
+                return None
+            
             file_metadata = {'name': filename}
             if folder_id:
                 file_metadata['parents'] = [folder_id]
@@ -66,8 +85,14 @@ class DriveUploader:
     
     async def create_folder(self, folder_name: str, parent_id: Optional[str] = None) -> Optional[str]:
         """Create folder in Drive"""
+        if not self.enabled:
+            return None
+        
         try:
             service = self._get_drive_service()
+            if not service:
+                return None
+            
             file_metadata = {
                 'name': folder_name,
                 'mimeType': 'application/vnd.google-apps.folder'
@@ -83,4 +108,3 @@ class DriveUploader:
         except Exception as e:
             print(f"❌ Folder creation error: {str(e)}")
             return None
-          
