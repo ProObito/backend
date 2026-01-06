@@ -4,13 +4,19 @@ import axios from "axios";
 import { MongoClient } from "mongodb";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import { exec } from "child_process";
+import { promisify } from "util";
 
 dotenv.config();
 
+const execPromise = promisify(exec);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// All 3 MongoDB URIs
+// ==========================================
+// CONFIGURATION
+// ==========================================
+
 const MONGODB_URIS = [
   process.env.MONGODB_URI_1 || "mongodb+srv://probito140:umaid2008@cluster0.1utfc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
   process.env.MONGODB_URI_2 || "mongodb+srv://wuwamuqo_db_user:NfhgBOs7LeRbSI6S@cluster0.zxqopbx.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
@@ -23,7 +29,6 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "https://llirkgzjtaqltkxsgazo.s
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxsaXJrZ3pqdGFxbHRreHNnYXpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcxNDA4ODEsImV4cCI6MjA4MjcxNjg4MX0.z1e8g4GgGy1jQaykQ5AFHR2_kSD11GnsUYyV8t0g3TI";
 
 const CODEWORDS_API_KEY = process.env.CODEWORDS_API_KEY || "";
-const MANGA_SCRAPER_SERVICE = "manga_chapter_monitor_a00f7c06";
 
 app.use(cors());
 app.use(express.json());
@@ -44,6 +49,7 @@ app.get("/api/manga", async (req, res) => {
     const manga = await db.collection("manga")
       .find(query)
       .limit(parseInt(limit))
+      .sort({ created_at: -1 })
       .toArray();
     
     await client.close();
@@ -130,33 +136,130 @@ app.get("/api/latest", async (req, res) => {
 });
 
 // ==========================================
-// SCRAPING TRIGGER
+// ADMIN SCRAPING ENDPOINTS
 // ==========================================
 
-app.post("/api/trigger-scrape", async (req, res) => {
+// Scrape ALL sites (FULL CATALOG)
+app.post("/api/admin/scrape-all", async (req, res) => {
   try {
-    const response = await axios.post(
-      `https://codewords.agemo.ai/run/${MANGA_SCRAPER_SERVICE}`,
-      { force_check: true },
-      {
-        headers: {
-          'Authorization': `Bearer ${CODEWORDS_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 300000
+    console.log("🚀 Starting FULL SITE SCRAPING...");
+    
+    // Start Python scraper in background
+    exec('python3 orchestrator.py', { 
+      env: {
+        ...process.env,
+        MONGODB_URI_1: MONGODB_URIS[0],
+        MONGODB_URI_2: MONGODB_URIS[1],
+        MONGODB_URI_3: MONGODB_URIS[2],
+        CATBOX_USERHASH: process.env.CATBOX_USERHASH,
+        GOOGLE_DRIVE_SERVICE_ACCOUNT: process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT
       }
-    );
+    }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`❌ Scraper error: ${error.message}`);
+        console.error(`stderr: ${stderr}`);
+        return;
+      }
+      console.log(`✅ Scraper completed!`);
+      console.log(stdout);
+    });
     
     res.json({ 
-      status: 'success', 
-      message: 'Scraping started',
-      data: response.data 
+      status: 'started',
+      message: 'Full site scraping started in background for ALL 8 sites',
+      note: 'This will take 1-2 hours. Check /api/stats to monitor progress.',
+      sites: ['asura', 'comix', 'roliascan', 'vortexscans', 'reaperscans', 'stonescape', 'omegascans', 'allmanga']
     });
   } catch (error) {
-    res.status(500).json({ 
-      error: error.message,
-      details: error.response?.data 
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Scrape single site
+app.post("/api/admin/scrape-site", async (req, res) => {
+  try {
+    const { site } = req.body;
+    
+    const validSites = ['asura', 'comix', 'roliascan', 'vortexscans', 'reaperscans', 'stonescape', 'omegascans', 'allmanga'];
+    
+    if (!validSites.includes(site)) {
+      return res.status(400).json({ 
+        error: 'Invalid site',
+        valid_sites: validSites
+      });
+    }
+    
+    console.log(`🚀 Starting ${site} scraping...`);
+    
+    // Run Python scraper for specific site
+    const pythonCode = `
+from orchestrator import MangaOrchestrator
+import asyncio
+
+async def main():
+    orchestrator = MangaOrchestrator()
+    await orchestrator.scrape_site('${site}', upload_images=False)
+
+asyncio.run(main())
+`;
+    
+    exec(`python3 -c "${pythonCode.replace(/\n/g, ' ')}"`, {
+      env: {
+        ...process.env,
+        MONGODB_URI_1: MONGODB_URIS[0],
+        MONGODB_URI_2: MONGODB_URIS[1],
+        MONGODB_URI_3: MONGODB_URIS[2]
+      }
+    }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`❌ ${site} scraper error: ${error.message}`);
+        return;
+      }
+      console.log(`✅ ${site} scraping completed!`);
+      console.log(stdout);
     });
+    
+    res.json({ 
+      status: 'started',
+      message: `Scraping ${site} started`,
+      site: site,
+      note: 'Check /api/stats in 15-30 minutes'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get scraping status
+app.get("/api/admin/scrape-status", async (req, res) => {
+  try {
+    const client = new MongoClient(PRIMARY_MONGODB_URI);
+    await client.connect();
+    
+    const db = client.db("comicktown");
+    
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    
+    const [recentManga, recentChapters, totalManga, totalChapters] = await Promise.all([
+      db.collection("manga").countDocuments({ created_at: { $gte: oneHourAgo } }),
+      db.collection("chapters").countDocuments({ created_at: { $gte: oneHourAgo } }),
+      db.collection("manga").countDocuments({}),
+      db.collection("chapters").countDocuments({})
+    ]);
+    
+    await client.close();
+    
+    res.json({
+      status: recentManga > 0 || recentChapters > 0 ? 'active' : 'idle',
+      total_manga: totalManga,
+      total_chapters: totalChapters,
+      recent_manga_added: recentManga,
+      recent_chapters_added: recentChapters,
+      last_hour: new Date(oneHourAgo).toISOString(),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -264,21 +367,22 @@ app.get("/api/stats", async (req, res) => {
     
     await client.close();
     
-    const bysite = {};
+    const bySite = {};
     siteStats.forEach(s => {
-      bysite[s._id] = s.count;
+      bySite[s._id] = s.count;
     });
     
     res.json({
       total_manga: mangaCount,
       total_chapters: chaptersCount,
-      by_site: bysite,
+      by_site: bySite,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // Health check
 app.get("/health", (req, res) => {
@@ -301,7 +405,9 @@ app.get("/", (req, res) => {
       search: "GET /api/search?q=solo+leveling&site=asura",
       latest: "GET /api/latest?limit=20",
       stats: "GET /api/stats",
-      scrape: "POST /api/trigger-scrape",
+      admin_scrape_all: "POST /api/admin/scrape-all",
+      admin_scrape_site: "POST /api/admin/scrape-site",
+      admin_status: "GET /api/admin/scrape-status",
       sync: "POST /api/sync-to-site"
     }
   });
@@ -311,4 +417,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Comicktown Backend v2.0 running on port ${PORT}`);
   console.log(`📚 Supporting 8 manga sites`);
   console.log(`🔗 Connected to ${MONGODB_URIS.length} MongoDB databases`);
+  console.log(`📡 API: http://localhost:${PORT}`);
 });
